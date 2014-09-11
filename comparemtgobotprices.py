@@ -4,6 +4,7 @@ import re
 import urllib.parse
 import queue
 import threading
+import urllib.error
 
 class CompareMTGOBotPrices:
 	def __init__(self):
@@ -35,11 +36,16 @@ class CompareMTGOBotPrices:
 		def populatePriceList(priceList):
 			print('Requesting URL: ' + priceList.url)
 
-			response = urllib.request.urlopen(priceList.url)
+			try:
+				response = urllib.request.urlopen(priceList.url)
 
-			response = response.read().decode('utf-8', 'ignore')
+				response = response.read().decode('utf-8', 'ignore')
 
-			priceList.load(response, self.sets)
+				priceList.load(response, self.sets)
+				
+				return True
+			except urllib.error.HTTPError:
+				return False
 		
 		def processPriceListQueue (q):
 			while True:
