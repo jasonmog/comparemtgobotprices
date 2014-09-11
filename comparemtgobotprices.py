@@ -2,6 +2,8 @@ import fileinput
 import urllib.request
 import re
 import urllib.parse
+import queue
+import threading
 
 class CompareMTGOBotPrices:
 	def __init__(self):
@@ -28,14 +30,31 @@ class CompareMTGOBotPrices:
 			self.priceLists.append(PriceList(url))
 			
 	def populatePriceLists(self):
-		for priceList in self.priceLists:
-			print('Requesting URL: ' + priceList.url)
+		q = queue.Queue()
 		
+		def populatePriceList(priceList):
+			print('Requesting URL: ' + priceList.url)
+
 			response = urllib.request.urlopen(priceList.url)
-			
+
 			response = response.read().decode('utf-8', 'ignore')
-			
+
 			priceList.load(response, self.sets)
+		
+		def processPriceListQueue (q):
+			while True:
+				populatePriceList(q.get())
+				q.task_done()
+			
+		for i in range(8):
+			worker = threading.Thread(target=processPriceListQueue, args=(q,))
+			worker.setDaemon(True)
+			worker.start()
+		
+		for priceList in self.priceLists:
+			q.put(priceList)
+			
+		q.join()
 		
 	def comparePriceLists(self):
 		for i in range(0, len(self.priceLists)):
@@ -59,7 +78,7 @@ class CompareMTGOBotPrices:
 					sell = cardComparison.sellCard.sellPrice
 					buy = cardComparison.buyCard.buyPrice
 					
-					if (cardComparison.profit < .1 or cardComparison.profit > 2):
+					if (cardComparison.profit < .25 or cardComparison.profit > 2):
 						continue
 					
 					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (A)'
@@ -73,7 +92,7 @@ class CompareMTGOBotPrices:
 					sell = cardComparison.sellCard.sellPrice
 					buy = cardComparison.buyCard.buyPrice
 					
-					if (cardComparison.profit < .1 or cardComparison.profit > 2):
+					if (cardComparison.profit < .25 or cardComparison.profit > 2):
 						continue
 					
 					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (B)'
@@ -142,7 +161,7 @@ class PriceList:
 			else:
 				sell = str(sell)
 			
-			print('Loaded: ' + str(card))
+			#print('Loaded: ' + str(card))
 				
 			self.cards.append(card)
 				
