@@ -1,15 +1,23 @@
 import fileinput
 import urllib.request
 import re
+import urllib.parse
 
 class CompareMTGOBotPrices:
 	def __init__(self):
 		self.priceLists = []
 		
 	def start(self):
+		self.loadSets()
 		self.loadPriceLists()
 		self.populatePriceLists()
 		self.comparePriceLists()
+		
+	def loadSets(self):
+		self.sets = []
+		
+		for code in fileinput.input('sets.txt'):
+			self.sets.append(code.strip())
 		
 	def loadPriceLists(self):
 		for url in fileinput.input('pricelists.txt'):
@@ -27,14 +35,21 @@ class CompareMTGOBotPrices:
 			
 			response = response.read().decode('utf-8', 'ignore')
 			
-			priceList.load(response)
+			priceList.load(response, self.sets)
 		
 	def comparePriceLists(self):
 		for i in range(0, len(self.priceLists)):
 			a = self.priceLists[i]
 			
+			aURL = urllib.parse.urlparse(a.url)
+			
 			for j in range(i + 1, len(self.priceLists)):
 				b = self.priceLists[j]
+
+				bURL = urllib.parse.urlparse(b.url)
+				
+				if aURL.netloc == bURL.netloc:
+					continue
 				
 				print('Comparing ' + a.url + ' (A) and ' + b.url + ' (B)')
 
@@ -43,48 +58,57 @@ class CompareMTGOBotPrices:
 				for cardComparison in comparison.aSellingLessThanB:
 					sell = cardComparison.sellCard.sellPrice
 					buy = cardComparison.buyCard.buyPrice
-					profit = buy - sell
 					
-					if (profit < .1 or profit > 2):
+					if (cardComparison.profit < .1 or cardComparison.profit > 2):
 						continue
 					
 					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (A)'
-					msg += ' BUY ' + str(buy) + ' (B) = ' + str(profit) + '\n\n'
+					msg += ' BUY ' + str(buy) + ' (B) = ' + str(cardComparison.profit) + '\n'
+					msg += cardComparison.sellCard.line + '\n'
+					msg += cardComparison.buyCard.line + '\n\n'
 					
 					print(msg)
 
 				for cardComparison in comparison.bSellingLessThanA:
 					sell = cardComparison.sellCard.sellPrice
 					buy = cardComparison.buyCard.buyPrice
-					profit = buy - sell
 					
-					if (profit < .1 or profit > 2):
+					if (cardComparison.profit < .1 or cardComparison.profit > 2):
 						continue
 					
 					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (B)'
-					msg += ' BUY ' + str(buy) + ' (A) = ' + str(profit) + '\n\n'
+					msg += ' BUY ' + str(buy) + ' (A) = ' + str(cardComparison.profit) + '\n'
+					msg += cardComparison.sellCard.line + '\n'
+					msg += cardComparison.buyCard.line + '\n\n'
 					
 					print(msg)
 					
 class PriceList:
 	def __init__(self, url):
-		self.cards = {}
+		self.cards = []
 		self.url = url
 		
-	def load (self, response):
-		singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/]+)*).+?([0-9]+[0-9\.]*)")
-		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/]+)*).+?([0-9]+[0-9\.]*) +([0-9]+[0-9\.]*)")
+	def load (self, response, sets):
+		#singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+[0-9\.]*)")
+		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+[0-9\.]*) +([0-9]+[0-9\.]*)")
+		setsPattern = re.compile('\\b' + '|'.join(sets) + '\\b')
 		
 		for line in response.splitlines():
-			print('Parsing: ' + line)
+			#print('Parsing: ' + line)
 			
 			match = doublePricePattern.search(line)
 			
 			if match is None:
+				continue # skip cards with only buy or sell price. can't tell if the price is buy or sell
 				match = singlePricePattern.search(line)
 		
 				if match is None:
 					continue
+					
+			setMatch = setsPattern.search(line)
+			
+			if setMatch is None:
+				continue
 					
 			groups = match.groups()
 				
@@ -96,20 +120,31 @@ class PriceList:
 				sell = float(groups[2])
 				
 			name = groups[0].strip()
+			
+			setCode = setMatch.group(0)
+			
+			if name.endswith('*'):
+				foil = True
 				
-			card = Card(name, buy, sell, line)
+				name = name[0:len(name) - 1]
+			else:
+				if name.startswith('Foil '):
+					foil = True
+				
+					name = name[len('Foil '):len(name)]
+				else:
+					foil = False
+				
+			card = Card(name, setCode, foil, buy, sell, line)
 			
 			if sell is None:
 				sell = ''
 			else:
 				sell = str(sell)
 			
-			print('Loaded ' + card.name + ' ' + str(card.buyPrice) + '/' + sell)
+			print('Loaded: ' + str(card))
 				
-			if self.cards.get(name) is not None:
-				continue
-				
-			self.cards[name] = card
+			self.cards.append(card)
 				
 	def compareTo (self, priceList):
 		result = PriceListComparison(self, priceList)
@@ -117,9 +152,8 @@ class PriceList:
 		aSellingLessThanB = []
 		bSellingLessThanA = []
 		
-		for name in self.cards:
-			a = self.get(name)
-			b = priceList.get(name)
+		for a in self.cards:
+			b = priceList.get(a)
 			
 			if b is None:
 				continue
@@ -132,20 +166,29 @@ class PriceList:
 				if b.buyPrice > a.sellPrice:
 					aSellingLessThanB.append(CardComparison(b, a))
 				
-		result.aSellingLessThanB = aSellingLessThanB
-		result.bSellingLessThanA = bSellingLessThanA
+		result.aSellingLessThanB = sorted(aSellingLessThanB, key=lambda x: x.profit, reverse=True)
+		result.bSellingLessThanA = sorted(bSellingLessThanA, key=lambda x: x.profit, reverse=True)
 		
 		return result
 		
-	def get (self, name):
-		return self.cards.get(name)
+	def get (self, needle):
+		for card in self.cards:
+			if card.name == needle.name and card.foil == needle.foil and card.setCode == needle.setCode:
+				return card
+				
+		return None
 		
 class Card:
-	def __init__(self, name, buyPrice, sellPrice, line):
+	def __init__(self, name, setCode, foil, buyPrice, sellPrice, line):
 		self.name = name
 		self.buyPrice = buyPrice
 		self.sellPrice = sellPrice
 		self.line = line
+		self.setCode = setCode
+		self.foil = foil
+		
+	def __str__(self):
+		return str({ 'name': self.name, 'setCode': self.setCode, 'foil': self.foil, 'buy': str(self.buyPrice), 'sell': str(self.sellPrice)})
 		
 class PriceListComparison:
 	def __init__(self, a, b):
@@ -158,6 +201,7 @@ class CardComparison:
 	def __init__(self, buy, sell):
 		self.buyCard = buy
 		self.sellCard = sell
+		self.profit = buy.buyPrice - sell.sellPrice
 		
 compare = CompareMTGOBotPrices()
 compare.start()

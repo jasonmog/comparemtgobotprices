@@ -1,2 +1,10 @@
 http://supernovabots.com/prices_0.txt
 http://mtgoempire.com/STD_INV.html
+http://supernovabots.com/prices_3.txt
+http://mtgoempire.com/STD_INV_FOIL.html
+http://mtgoempire.com/MOD_INV.html
+http://mtgoempire.com/MOD_INV_FOIL.html
+http://mtgoempire.com/LEG_INV.html
+http://mtgoempire.com/LEG_INV_FOIL.html
+http://supernovabots.com/prices_6.txt
+http://mtgoempire.com/BOO_INV.html
