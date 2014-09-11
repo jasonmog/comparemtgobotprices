@@ -25,60 +25,89 @@ class CompareMTGOBotPrices:
 		
 			response = urllib.request.urlopen(priceList.url)
 			
-			str = response.read().decode('utf-8', 'ignore')
+			response = response.read().decode('utf-8', 'ignore')
 			
-			priceList.load(str)
+			priceList.load(response)
 		
 	def comparePriceLists(self):
 		for i in range(0, len(self.priceLists)):
-			priceList = self.priceLists[i]
+			a = self.priceLists[i]
 			
 			for j in range(i + 1, len(self.priceLists)):
 				b = self.priceLists[j]
 				
-				print('Comparing ' + priceList.url + ' and ' + b.url)
+				print('Comparing ' + a.url + ' (A) and ' + b.url + ' (B)')
 
-				comparison = priceList.compareTo(b)
+				comparison = a.compareTo(b)
 				
-				for card in comparison.aSellingLessThanB:
-					print(card.name + ': SELL ' + card.sellPrice + ' (' + comparison.priceListA.url + ') BUY ' + comparison.priceListB.get(card.name).buyPrice + ' (' + comparison.priceListB.url + ')')
+				for cardComparison in comparison.aSellingLessThanB:
+					sell = cardComparison.sellCard.sellPrice
+					buy = cardComparison.buyCard.buyPrice
+					profit = buy - sell
+					
+					if (profit < .1 or profit > 2):
+						continue
+					
+					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (A)'
+					msg += ' BUY ' + str(buy) + ' (B) = ' + str(profit) + '\n\n'
+					
+					print(msg)
 
-				for card in comparison.bSellingLessThanA:
-						print(card.name + ': SELL ' + card.sellPrice + ' (' + comparison.priceListB.url + ') BUY ' + comparison.priceListA.get(card.name).buyPrice + ' (' + comparison.priceListA.url + ')')
+				for cardComparison in comparison.bSellingLessThanA:
+					sell = cardComparison.sellCard.sellPrice
+					buy = cardComparison.buyCard.buyPrice
+					profit = buy - sell
+					
+					if (profit < .1 or profit > 2):
+						continue
+					
+					msg = cardComparison.buyCard.name + ':\nSELL ' + str(sell) + ' (B)'
+					msg += ' BUY ' + str(buy) + ' (A) = ' + str(profit) + '\n\n'
+					
+					print(msg)
 					
 class PriceList:
 	def __init__(self, url):
 		self.cards = {}
 		self.url = url
 		
-	def load (self, str):
-		singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z- ',]+?) [ \[].*([0-9]+\.[0-9]+)")
-		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z- ',]+?) [ \[].*([0-9]+\.[0-9]+) +([0-9]+\.[0-9]+)")
+	def load (self, response):
+		singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/]+)*).+?([0-9]+[0-9\.]*)")
+		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/]+)*).+?([0-9]+[0-9\.]*) +([0-9]+[0-9\.]*)")
 		
-		for line in str.splitlines():
+		for line in response.splitlines():
+			print('Parsing: ' + line)
+			
 			match = doublePricePattern.search(line)
 			
-			if match == None:
+			if match is None:
 				match = singlePricePattern.search(line)
 		
-				if match == None:
+				if match is None:
 					continue
 					
 			groups = match.groups()
 				
-			if (len(groups) >= 3):
-				sell = groups[2]
+			if (len(groups) >= 4):
+				buy = float(groups[2])
+				sell = float(groups[3])
 			else:
-				sell = None
+				buy = None
+				sell = float(groups[2])
 				
-			name = groups[0]
+			name = groups[0].strip()
 				
-			card = Card(name, groups[1], sell)
+			card = Card(name, buy, sell, line)
 			
-			if sell == None:
+			if sell is None:
 				sell = ''
+			else:
+				sell = str(sell)
 			
-			print('Loaded ' + card.name + ' ' + card.buyPrice + '/' + sell)
+			print('Loaded ' + card.name + ' ' + str(card.buyPrice) + '/' + sell)
+				
+			if self.cards.get(name) is not None:
+				continue
 				
 			self.cards[name] = card
 				
@@ -92,22 +121,16 @@ class PriceList:
 			a = self.get(name)
 			b = priceList.get(name)
 			
-			if b == None:
+			if b is None:
 				continue
 				
-			print(name)
-				
-			if a.buyPrice != None and b.sellPrice != None:
+			if a.buyPrice is not None and b.sellPrice is not None:
 				if a.buyPrice > b.sellPrice:
-					print('A Buy: ' + a.buyPrice + ' B Sell: ' + b.sellPrice)
-
-					bSellingLessThanA.append(a)
+					bSellingLessThanA.append(CardComparison(a, b))
 				
-			if b.buyPrice != None and a.sellPrice != None:
+			if b.buyPrice is not None and a.sellPrice is not None:
 				if b.buyPrice > a.sellPrice:
-					print('A Sell: ' + a.sellPrice + ' B Buy: ' + b.buyPrice)
-
-					aSellingLessThanB.append(a)
+					aSellingLessThanB.append(CardComparison(b, a))
 				
 		result.aSellingLessThanB = aSellingLessThanB
 		result.bSellingLessThanA = bSellingLessThanA
@@ -118,10 +141,11 @@ class PriceList:
 		return self.cards.get(name)
 		
 class Card:
-	def __init__(self, name, buyPrice, sellPrice):
+	def __init__(self, name, buyPrice, sellPrice, line):
 		self.name = name
 		self.buyPrice = buyPrice
 		self.sellPrice = sellPrice
+		self.line = line
 		
 class PriceListComparison:
 	def __init__(self, a, b):
@@ -129,6 +153,11 @@ class PriceListComparison:
 		self.priceListB = b
 		self.aSellingLessThanB = []
 		self.bSellingLessThanA = []
+		
+class CardComparison:
+	def __init__(self, buy, sell):
+		self.buyCard = buy
+		self.sellCard = sell
 		
 compare = CompareMTGOBotPrices()
 compare.start()
