@@ -43,6 +43,8 @@ class CompareMTGOBotPrices:
 
 				priceList.load(response, self.sets)
 				
+				print('Loaded ' + str(len(priceList.cards)) + ' cards from ' + priceList.url)
+				
 				return True
 			except urllib.error.HTTPError:
 				return False
@@ -114,8 +116,8 @@ class PriceList:
 		self.url = url
 		
 	def load (self, response, sets):
-		#singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+[0-9\.]*)")
-		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+[0-9\.]*) +([0-9]+[0-9\.]*)")
+		#singlePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+\.[0-9]+)")
+		doublePricePattern = re.compile(r"([A-Z][a-z][a-zA-Z-',\/]+( [a-zA-Z-',\/0-9]+)*\*?).+?\b([0-9]+\.[0-9]+).+([0-9]+\.[0-9]+)")
 		setsPattern = re.compile('\\b' + '|'.join(sets) + '\\b')
 		
 		for line in response.splitlines():
